@@ -1,0 +1,60 @@
+#https://github.com/PolukovY/MySQL-ELK-Graylog/blob/main/docker-compose.yml
+
+version: '3.3'
+
+volumes:
+  fbdata: {}
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.4.0
+    environment:
+      - node.name=es01
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01
+      - cluster.name=docker-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms4096m -Xmx4096m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.4.0
+    environment:
+      - "ELASTICSEARCH_HOSTS=http://elasticsearch:9200"
+    ports:
+      - "5601:5601"
+  filebeat:
+    container_name: filebeat
+    hostname: filebeat
+    user: root
+    image: docker.elastic.co/beats/filebeat:7.4.0
+    volumes:
+      #Mount the filebeat configuration so users can make edit
+      - ./config/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      #Mount the mysql logs into the filebeat container so we can access and and index them using the filebeat mysql module
+      - ./db/logs:/var/log/mysql/
+      #Named volume fsdata. This is used to persist the registry file between restarts, so to avoid data duplication
+      - fbdata:/usr/share/filebeat/data/
+    command: filebeat -strict.perms=false
+    restart: on-failure
+  db:
+    image: mysql:5.7
+    container_name: mysql
+    entrypoint: ""
+    command: bash -c "chown -R mysql:mysql /var/log/mysql && exec /entrypoint.sh mysqld"
+    volumes:
+      - "./db/mysql.conf.d/mysqld.cnf:/etc/mysql/mysql.conf.d/mysqld.cnf"
+      - "./db/data:/var/lib/mysql:rw"
+      - "./db/logs:/var/log/mysql/"
+    ports:
+      - 3306:3306
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: nimda
+      MYSQL_DATABASE: test
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: nimda
